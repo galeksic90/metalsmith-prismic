@@ -1,5 +1,4 @@
-metalsmith-prismic
-==================
+# metalsmith-prismic [![Build Status](https://travis-ci.org/mbanting/metalsmith-prismic.svg?branch=master)](https://travis-ci.org/mbanting/metalsmith-prismic)
 
 A Metalsmith.io plugin to pull in content from [Prismic.io]
 
@@ -15,8 +14,9 @@ A Metalsmith.io plugin to pull in content from [Prismic.io]
   Install the node modules and add `metalsmith-prismic` to your list of plugins in `metalsmith.json`. Include the
 - `url` (eg. https://lesbonneschoses.prismic.io/api) of your Prismic.io repository.
 - `accessToken` is optional, depending if your repository needs it or not.
-- `release` with the name of the content release you want to generate; if none specified then master release will be generated
+- `release` the name or raw reference of the release you want to generate; if none specified then master release will be generated
 - `linkResolver` an optional function to generate links or the path of a generated collection of files; if none specified then a default format of "/&lt;document.type&gt;/&lt;document.id&gt;/&lt;document.slug&gt;" will be used
+- `htmlSerializer` an optional function to format the resulting HTML. You don't have to write the HTML serialization for all the possible types, just the ones you want to override the default behavior
 
 
 ```json
@@ -25,7 +25,7 @@ A Metalsmith.io plugin to pull in content from [Prismic.io]
     "metalsmith-prismic": {
       "url": "<your repository's API url>",
       "accessToken": "<optional accessToken>",
-      "release": "<optional release name>",
+      "release": "<optional release name or raw reference value>",
     }
   }
 }
@@ -42,8 +42,9 @@ var prismic = require('metalsmith-prismic');
 .use(prismic({
     "url": "<your repository's API url>",
     "accessToken": "<optional access token>",
-    "release": "<optional release name>",
+    "release": "<optional release name or raw reference value>",
     "linkResolver": <optional linkResolver function>
+    "htmlSerializer": <optional htmlSerializer function>
 }))
 ```
 
@@ -51,8 +52,7 @@ var prismic = require('metalsmith-prismic');
 
 Pulling in content from the site's repository in [Prismic.io] for display is a two step process.
 
-##### Query and Order the Content
-In your file's metadata add the Prismic queries and optional orderings or pageSize
+In your file's metadata add the Prismic queries and optional orderings, pageSize, arrayFragments, fetchLinks and htmlSerializer parameters
 ```yaml
 ---
 template: index_en.hbt
@@ -63,24 +63,37 @@ prismic:
     query: '[[:d = at(document.type, "hero-slide")]]'
     orderings: '[my.hero-slide.seqNum]'
     pageSize: 50
----
-```
-By default the query runs against the _everything_ Prismic form. To run against a different form (eg. a collection), provide the form name (eg. collection name)
-```yaml
----
-template: index_en.hbt
-prismic:
-  page-header-footer:
-    query: '[[:d = at(document.type, "page-header-footer")]]'
-  hero-slide:
-    query: '[[:d = at(document.type, "hero-slide")]]'
-    orderings: '[my.hero-slide.seqNum]'
-    pageSize: 50
+    arrayFragments: true
+    output: html, text
   blog:
     query: '[[:d = at(document.type, "blog")]]'
+    allPages: true
     formName: 'tech-related'
 ---
 ```
+###### query
+The required `query` parameter specifies the query to run, following the [Prismic's predicate-based query syntax](https://developers.prismic.io/documentation/api-documentation#predicate-based-queries).
+
+###### bookmark
+The `query` parameter may be replaced by a `bookmark` parameter, which fetches a single document defined by a [Prismic bookmark](https://developers.prismic.io/documentation/repository-administrators-manual#bookmarks).
+
+###### orderings
+The optional `orderings` parameter specifies how the results should be ordered, following the [Prismic's ordering syntax](https://developers.prismic.io/documentation/api-documentation#orderings).
+
+###### pageSize & allPages
+The optional `pageSize` parameter specifies the maximum number of results to retrieve for the query. The default is based on Prismic's own default of 20 items. Prismic also caps the maximum results for each query at 100. Any pageSize set above this number will be ignored by Prismic.
+
+To get around this limitation and retrieve all results, use the optional `allPages` parameter and set it to true. Doing so will force the plugin to override the `pageSize` and get all results by repeatedly executing the query against Prismic, combining all paged results.
+
+###### arrayFragments
+Prismic has an undocumented feature where fragments named like location[0], location[1] and so on, will be returned as an array in the request response. By default, only the first one will be returned. To get an array of all the fragments, use the optional `arrayFragments` parameter and set to true.
+
+###### formName
+By default the query runs against the _everything_ Prismic form. To run against a different form (eg. a collection), provide the `formName` (eg. collection name)
+
+###### output
+By default the plugin will generate the HTML output for each Prismic fragment. Use the `output` parameter to control which outputs to generate from the fragments. Valid outputs are `html` and `text`, multiple options should be comma separated.
+
 This pulls the Prismic response into the file's metadata.
 
 ```yaml
@@ -161,6 +174,32 @@ This pulls the Prismic response into the file's metadata.
 ---
 ```
 
+###### fetchLinks
+Prismic supports fetching data from nested documents through links using the Prismic `fetchLinks` query parameter. You can use this specify the nested content to be retrieved with this plugin as well.
+```yaml
+---
+template: index.hbt
+prismic:
+  jobOffers:
+    query: '[[:d = any(document.type, ["job-offer"])]]'
+    arrayFragments: true
+    fetchLinks: 'store.name,store.address,product.name'
+---
+```
+
+##### htmlSerializer
+If you choose to pass a custom `htmlSerializer` function, it will alter the `html` property of fragments with the applicable element types.
+
+```javascript
+
+"htmlSerializer": function (elem, content) {
+    // Add a class to all <h1>:
+    if (elem.type == "heading1") {
+        return '<h1 class="test-h1-class">' + content + '</h1>';
+    }
+}
+```
+
 ##### Generating a Collection of Files
 You'll often need to generate a collection of files from a collection of documents, such as blog posts. This can be achieved with the `collection` property designating that data binding to generate one file for every document in the query's result.
 ```yaml
@@ -176,9 +215,16 @@ prismic:
 ```
 In the example above, the query for the blog-post returns a collection of results (ie. a collection of blog posts). Because it's been designated as the collection to generate, a file for each blog post will be created, with each file containing the metadata for a single blog post. The results for all other queries, such as for the page-header-footer in the example above, will also be available for each of these generated files. At most one data binding can be designated as the collection for each source file.
 
-The location of these files will be determined by the `linkResolver` function, which, as mentioned above, can be overridden with your own function to determine the path in which these files are created in.
+The location of these files will be determined by the `linkResolver` function, which, as mentioned above, can be overridden with your own function to determine the path in which these files are created in. In addition, the filename of the source will be injected into the `ctx.path` property so you can use it in your `linkResolver` function.
+```js
+"linkResolver": function (ctx, doc) {
+    if (doc.isBroken) return;
+    // create file based off of type, id and the filename (extracted from the full path)
+    return '/' + doc.type + '/' + doc.id + '/' +  ctx.path.replace(/^.*(\\|\/|\:)/, '');
+}
+```
 
-Each of these generated files will, by default, have no file extension. To specify one, the `collection` can be further customized with the `fileExtension` property.
+As mentioned above, if no `linkResolver` function is provided the default one will be used, generating links with the default format of "/&lt;document.type&gt;/&lt;document.id&gt;/&lt;document.slug&gt;". This  will generate files with no file extension. To specify one, the `collection` can be further customized with the `fileExtension` property.
 ```yaml
 ---
 template: blog-post.hbt
@@ -215,8 +261,7 @@ Now that this content from Prismic is available in the file's metadata, you can 
 
 ## To Do
 - This plugin is still early in development and has only been tested with a limited set of Prismic queries and predicates. If anything isn't working please let me know!
-- Mock out Prismic for unit tests, and for integration tests switch to this project's own Prismic repository instead of using the default one
-- Allow the generation of the site for the active as well as each future release (ideal for content creators/publishers to preview their scheduled releases)
+- Repo that this previously tested against (http://lesbonneschoses.prismic.io/api) is now gone. Need to update tests to point to new repo.
 
 ## License
 

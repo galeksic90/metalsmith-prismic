@@ -1,10 +1,10 @@
 {
   "name": "metalsmith-prismic",
-  "version": "0.4.1",
+  "version": "0.10.0",
   "description": "A Metalsmith.io plugin to integrate and pull in content from Prismic.io",
   "main": "lib/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha"
   },
   "repository": {
     "type": "git",
@@ -22,16 +22,17 @@
   },
   "homepage": "https://github.com/mbanting/metalsmith-prismic",
   "dependencies": {
-    "async": "^0.9.0",
-    "debug": "^1.0.4",
-    "prismic.io": "^3.6.1",
-    "underscore": "^1.6.0"
+    "async": "^1.5.2",
+    "clone": "^1.0.2",
+    "debug": "^2.2.0",
+    "prismic.io": "3.6.1",
+    "underscore": "^1.8.3"
   },
   "devDependencies": {
-    "assert-dir-equal": "0.0.1",
-    "handlebars": "^2.0.0-alpha.4",
-    "metalsmith": "^0.9.0",
-    "metalsmith-templates": "^0.5.2",
-    "mocha": "^1.21.3"
+    "assert-dir-equal": "^1.0.1",
+    "handlebars": "^4.0.5",
+    "metalsmith": "^1.7.0",
+    "metalsmith-templates": "^0.7.0",
+    "mocha": "^2.4.5"
   }
 }
